@@ -24,6 +24,9 @@ func (app *application) routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/logout", app.logoutHandler)
 
 	// --- ADMIN ONLY ROUTES ---
+	listUsersHandler := http.HandlerFunc(app.listUsersHandler)
+	mux.Handle("GET /api/v1/admin/users", app.authenticate(app.requireAdmin(listUsersHandler)))
+
 	// Perhatikan penggunaan penulisan parameter {id} sesuai standar bawaan Go modern
 	deactivateHandler := http.HandlerFunc(app.deactivateUserHandler)
 	mux.Handle("POST /api/v1/admin/users/{id}/deactivate", app.authenticate(app.requireAdmin(deactivateHandler)))

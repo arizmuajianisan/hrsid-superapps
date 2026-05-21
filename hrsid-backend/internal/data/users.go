@@ -17,6 +17,7 @@ var (
 
 type User struct {
 	ID           string    `json:"id"`
+	PublicID     string    `json:"public_id,omitempty"`
 	NIK          string    `json:"nik"`
 	Email        string    `json:"email"`
 	FullName     string    `json:"full_name"`
@@ -220,6 +221,33 @@ func (m UserModel) Reactivate(id int64) error {
 	}
 
 	return tx.Commit()
+}
+
+func (m UserModel) GetAll() ([]*User, error) {
+	query := `
+		SELECT public_id, nik, email, full_name, role, department_id, is_active, created_at
+		FROM users
+		ORDER BY created_at DESC`
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	rows, err := m.DB.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []*User
+	for rows.Next() {
+		var u User
+		err := rows.Scan(&u.PublicID, &u.NIK, &u.Email, &u.FullName, &u.Role, &u.DepartmentID, &u.IsActive, &u.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, &u)
+	}
+	return users, rows.Err()
 }
 
 // GetInternalIDByPublicID membantu kita mendapatkan ID (BIGINT) dari PublicID (UUID)

@@ -326,6 +326,17 @@ func (app *application) meHandler(w http.ResponseWriter, r *http.Request) {
 	app.writeJSON(w, http.StatusOK, responseData, nil)
 }
 
+func (app *application) listUsersHandler(w http.ResponseWriter, r *http.Request) {
+	users, err := app.models.Users.GetAll()
+	if err != nil {
+		app.logger.Println(err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	app.writeJSON(w, http.StatusOK, map[string]interface{}{"users": users}, nil)
+}
+
 func (app *application) deactivateUserHandler(w http.ResponseWriter, r *http.Request) {
 	publicID := r.PathValue("id")
 
