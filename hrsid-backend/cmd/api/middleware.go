@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/arizmuajianisan/hrsid-backend/internal/auth" // Sesuaikan dengan module name Anda
 	"github.com/arizmuajianisan/hrsid-backend/internal/data"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // Kita buat tipe data khusus untuk context key agar tidak bentrok
@@ -14,35 +17,60 @@ type contextKey string
 
 const userContextKey = contextKey("user")
 
+type loggingResponseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
 func (app *application) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 1. Ambil cookie dari request
-		cookie, err := r.Cookie("hrs_session")
-		if err != nil {
-			if errors.Is(err, http.ErrNoCookie) {
-				http.Error(w, "Unauthorized: No session found", http.StatusUnauthorized)
-				return
-			}
-			http.Error(w, "Bad Request", http.StatusBadRequest)
+		// 1. Ambil header Authorization
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			http.Error(w, "Unauthorized: Missing Authorization Header", http.StatusUnauthorized)
 			return
 		}
 
-		// 2. Cari user berdasarkan ID yang ada di cookie
-		user, err := app.models.Users.GetByID(cookie.Value)
-		if err != nil {
-			if errors.Is(err, data.ErrRecordNotFound) {
-				http.Error(w, "Unauthorized: Invalid session", http.StatusUnauthorized)
-				return
-			}
-			app.logger.Println(err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		// 2. Format header harus "Bearer <token>"
+		parts := strings.Split(authHeader, " ")
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			http.Error(w, "Unauthorized: Invalid Authorization Format", http.StatusUnauthorized)
 			return
 		}
 
-		// 3. Masukkan data user ke dalam Context
+		accessToken := parts[1]
+		claims := &auth.UserClaims{}
+
+		// 3. Parsing dan validasi JWT token
+		token, err := jwt.ParseWithClaims(accessToken, claims, func(token *jwt.Token) (interface{}, error) {
+			// Pastikan metode signing-nya HS256
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, errors.New("unexpected signing method")
+			}
+			return []byte(app.config.jwt.secret), nil
+		})
+
+		// 4. Jika token expired atau rusak, langsung block di sini
+		if err != nil || !token.Valid {
+			if errors.Is(err, jwt.ErrTokenExpired) {
+				http.Error(w, "Unauthorized: Token Expired", http.StatusUnauthorized)
+				return
+			}
+			http.Error(w, "Unauthorized: Invalid Token", http.StatusUnauthorized)
+			return
+		}
+
+		// 5. Ubah claims menjadi struct data.User (hanya field krusial yang kita butuhkan)
+		// Dengan begini, handler di hilir tidak perlu diubah kodenya
+		user := &data.User{
+			ID:           claims.UserID,
+			NIK:          claims.NIK,
+			Role:         claims.Role,
+			DepartmentID: claims.DepartmentID,
+		}
+
+		// 6. Masukkan objek user ke Context dan teruskan request
 		ctx := context.WithValue(r.Context(), userContextKey, user)
-
-		// 4. Lanjutkan ke handler berikutnya dengan context baru
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -51,14 +79,43 @@ func (app *application) logRequest(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
-		// Kita bungkus ResponseWriter agar bisa menangkap status code
-		// Karena standard http.ResponseWriter tidak punya cara ambil status code setelah ditulis
-		app.logger.Printf("%s - %s %s %s", r.RemoteAddr, r.Proto, r.Method, r.URL.RequestURI())
+		lrw := &loggingResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 
-		next.ServeHTTP(w, r)
+		// log permulaan request
+		app.logger.Printf(
+			"%s %s %s | %s",
+			r.RemoteAddr,
+			strings.ToUpper(r.Method),
+			r.URL.RequestURI(),
+			r.Proto,
+		)
 
-		app.logger.Printf("completed in %s", time.Since(start))
+		next.ServeHTTP(lrw, r)
+
+		// log selesai dengan status & latency
+		duration := time.Since(start)
+		app.logger.Printf(
+			"%s %s %s | %d | %s",
+			r.RemoteAddr,
+			strings.ToUpper(r.Method),
+			r.URL.RequestURI(),
+			lrw.statusCode,
+			duration,
+		)
 	})
+}
+
+func (lrw *loggingResponseWriter) WriteHeader(code int) {
+	lrw.statusCode = code
+	lrw.ResponseWriter.WriteHeader(code)
+}
+
+func (lrw *loggingResponseWriter) Write(b []byte) (int, error) {
+	if lrw.statusCode == 0 {
+		// kalo belum ditulis header, asumsikan 200
+		lrw.statusCode = http.StatusOK
+	}
+	return lrw.ResponseWriter.Write(b)
 }
 
 func (app *application) recoverPanic(next http.Handler) http.Handler {
@@ -89,6 +146,22 @@ func (app *application) enableCORS(next http.Handler) http.Handler {
 			return
 		}
 
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (app *application) requireAdmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 1. Ambil user dari context (yang sebelumnya sudah diset oleh middleware authenticate)
+		user, ok := r.Context().Value(userContextKey).(*data.User)
+
+		// 2. Jika user tidak ditemukan atau role-nya bukan admin, tolak akses!
+		if !ok || user.Role != "admin" {
+			http.Error(w, "Forbidden: Admin access required", http.StatusForbidden)
+			return
+		}
+
+		// 3. Jika lolos, teruskan request ke handler tujuan
 		next.ServeHTTP(w, r)
 	})
 }

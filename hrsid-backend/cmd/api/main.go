@@ -25,6 +25,9 @@ type application struct {
 type config struct {
 	port int
 	dsn  string
+	jwt  struct {
+		secret string // Key rahasia untuk signature JWT
+	}
 }
 
 func main() {
@@ -38,6 +41,7 @@ func main() {
 	var cfg config
 	flag.IntVar(&cfg.port, "port", 4000, "API server port")
 	flag.StringVar(&cfg.dsn, "db-dsn", os.Getenv("DB_DSN"), "PostgreSQL DSN")
+	flag.StringVar(&cfg.jwt.secret, "jwt-secret", os.Getenv("JWT_SECRET"), "JWT secret key")
 	flag.Parse()
 
 	logger := log.New(os.Stdout, "", log.Ldate|log.Ltime)

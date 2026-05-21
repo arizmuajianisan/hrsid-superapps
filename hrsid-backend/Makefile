@@ -16,5 +16,8 @@ migrate-status:
 migrate-create:
 	@goose -dir migrations create $(name) sql
 
+seed:
+	go run cmd/seeder/main.go
+
 run-dev:
 	@go run .\cmd\api

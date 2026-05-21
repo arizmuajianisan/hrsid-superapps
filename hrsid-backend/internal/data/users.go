@@ -146,3 +146,72 @@ func (m UserModel) GetByID(id string) (*User, error) {
 	}
 	return &user, nil
 }
+
+func (m UserModel) GetByIdentifier(identifier string) (*User, error) {
+	query := `
+		SELECT id, nik, email, password_hash, full_name, role, department_id, is_active, created_at
+		FROM users
+		WHERE email = $1 OR nik = $1`
+
+	var user User
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	// Sesuaikan &user.PasswordHash di bawah ini dengan property struct User Anda
+	err := m.DB.QueryRowContext(ctx, query, identifier).Scan(
+		&user.ID, &user.NIK, &user.Email, &user.PasswordHash, &user.FullName, &user.Role, &user.DepartmentID, &user.IsActive, &user.CreatedAt,
+	)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrRecordNotFound
+		}
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (m UserModel) Deactivate(id int64) error {
+	// Menggunakan transaction (Tx) agar status user dan pembongkaran sesi berjalan serentak
+	// Jika salah satu gagal, semua dibatalkan (rollback)
+	queryUser := `UPDATE users SET is_active = false WHERE id = $1`
+	querySessions := `UPDATE sessions SET is_blocked = true WHERE user_id = $1`
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Asumsi Anda menggunakan m.DB.BeginTx untuk transaksi
+	tx, err := m.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, queryUser, id); err != nil {
+		return err
+	}
+
+	if _, err := tx.ExecContext(ctx, querySessions, id); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+// GetInternalIDByPublicID membantu kita mendapatkan ID (BIGINT) dari PublicID (UUID)
+func (m UserModel) GetInternalIDByPublicID(publicID string) (int64, error) {
+	query := `SELECT id FROM users WHERE public_id = $1`
+
+	var id int64
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	err := m.DB.QueryRowContext(ctx, query, publicID).Scan(&id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, ErrRecordNotFound
+		}
+		return 0, err
+	}
+	return id, nil
+}
