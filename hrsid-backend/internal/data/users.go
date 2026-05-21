@@ -151,7 +151,7 @@ func (m UserModel) GetByIdentifier(identifier string) (*User, error) {
 	query := `
 		SELECT id, nik, email, password_hash, full_name, role, department_id, is_active, created_at
 		FROM users
-		WHERE email = $1 OR nik = $1`
+		WHERE (email = $1 OR nik = $1) AND is_active = true`
 
 	var user User
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)

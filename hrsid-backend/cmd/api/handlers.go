@@ -47,19 +47,6 @@ func (app *application) loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Generate JWT Access Token (Umur Pendek: 15 Menit)
-	accessToken, err := auth.GenerateAccessToken(
-		user.ID,
-		user.NIK,
-		user.Role,
-		user.DepartmentID,
-		app.config.jwt.secret,
-	)
-	if err != nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-
 	// 4. Generate Opaque Refresh Token (Umur Panjang: 30 Hari)
 	refreshToken, err := auth.GenerateRefreshToken()
 	if err != nil {
@@ -87,19 +74,33 @@ func (app *application) loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 7. Set Refresh Token ke HttpOnly Cookie
+	// 7. Generate JWT Access Token (setelah session dibuat agar session.ID tersedia)
+	accessToken, err := auth.GenerateAccessToken(
+		user.ID,
+		user.NIK,
+		user.Role,
+		user.DepartmentID,
+		session.ID,
+		app.config.jwt.secret,
+	)
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	// 9. Set Refresh Token ke HttpOnly Cookie
 	cookie := &http.Cookie{
-		Name:     "hrs_session", // Nama cookie tetap sama agar frontend tidak bingung
-		Value:    refreshToken,  // Nilainya sekarang adalah string random panjang (bukan ID user lagi)
+		Name:     "hrs_session",
+		Value:    refreshToken,
 		Path:     "/",
 		Expires:  session.Expiry,
 		HttpOnly: true,
-		Secure:   false, // Set ke true jika sudah menggunakan HTTPS di produksi
+		Secure:   false,
 		SameSite: http.SameSiteLaxMode,
 	}
 	http.SetCookie(w, cookie)
 
-	// 8. Kirim Access Token ke Frontend via JSON Response
+	// 10. Kirim Access Token ke Frontend via JSON Response
 	responseData := map[string]interface{}{
 		"access_token": accessToken,
 		"user": map[string]interface{}{
@@ -123,8 +124,7 @@ func (app *application) refreshHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Validasi token ke database tabel sessions (mencocokkan hash)
-	// Sesuaikan huruf kecil/besar app.models.sessions dengan struct Anda
+	// 2. Validasi token ke database
 	session, err := app.models.Sessions.GetByRefreshToken(cookie.Value)
 	if err != nil {
 		if errors.Is(err, data.ErrRecordNotFound) {
@@ -135,7 +135,7 @@ func (app *application) refreshHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Ambil data user pemilik session tersebut untuk mengisi data di JWT baru
+	// 3. Ambil data user pemilik session
 	user, err := app.models.Users.GetByID(session.UserID)
 	if err != nil {
 		if errors.Is(err, data.ErrRecordNotFound) {
@@ -146,12 +146,50 @@ func (app *application) refreshHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 4. Generate JWT Access Token baru (Umur Pendek: 15 Menit)
+	// 4. Blokir session lama (refresh token rotation)
+	if err = app.models.Sessions.BlockByID(session.ID); err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	// 5. Generate refresh token baru dan simpan session baru
+	newRefreshToken, err := auth.GenerateRefreshToken()
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	hash := sha256.Sum256([]byte(newRefreshToken))
+	newSession := &data.Session{
+		UserID:           user.ID,
+		RefreshTokenHash: hash[:],
+		IPAddress:        r.RemoteAddr,
+		UserAgent:        r.UserAgent(),
+		Expiry:           time.Now().Add(30 * 24 * time.Hour),
+	}
+	if err = app.models.Sessions.Insert(newSession); err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	// 6. Set refresh token baru ke cookie
+	http.SetCookie(w, &http.Cookie{
+		Name:     "hrs_session",
+		Value:    newRefreshToken,
+		Path:     "/",
+		Expires:  newSession.Expiry,
+		HttpOnly: true,
+		Secure:   false,
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	// 7. Generate JWT Access Token baru (embed session ID baru)
 	accessToken, err := auth.GenerateAccessToken(
 		user.ID,
 		user.NIK,
 		user.Role,
 		user.DepartmentID,
+		newSession.ID,
 		app.config.jwt.secret,
 	)
 	if err != nil {
@@ -159,12 +197,7 @@ func (app *application) refreshHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 5. Kirim Access Token baru ke Frontend
-	responseData := map[string]interface{}{
-		"access_token": accessToken,
-	}
-
-	app.writeJSON(w, http.StatusOK, responseData, nil)
+	app.writeJSON(w, http.StatusOK, map[string]interface{}{"access_token": accessToken}, nil)
 }
 
 func (app *application) registerUserHandler(w http.ResponseWriter, r *http.Request) {
@@ -241,29 +274,19 @@ func (app *application) listMyAppsHandler(w http.ResponseWriter, r *http.Request
 func (app *application) logoutHandler(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie("hrs_session")
 	if err == nil {
-		// 1. Ambil token mentah dari cookie
-		tokenString := cookie.Value
+		hash := sha256.Sum256([]byte(cookie.Value))
+		tokenHash := hash[:]
 
-		// 2. Lakukan hashing dengan cara yang sama persis seperti saat INSERT & REFRESH
-		hash := sha256.Sum256([]byte(tokenString))
-		tokenHash := hash[:] // Konversi ke slice []byte
-
-		// 3. Eksekusi query UPDATE dengan konversi parameter yang aman
 		query := `UPDATE sessions SET is_blocked = true WHERE refresh_token_hash = $1`
-		result, err := app.db.ExecContext(r.Context(), query, hash[:])
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+
+		result, err := app.db.ExecContext(ctx, query, tokenHash)
 		if err != nil {
 			app.logger.Println("DB Logout Error:", err)
 		} else {
 			rows, _ := result.RowsAffected()
 			app.logger.Printf("Logout: %d session blocked", rows)
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-
-		// Gunakan app.db atau sesuaikan dengan variabel koneksi DB di struct app Anda
-		_, err = app.db.ExecContext(ctx, query, tokenHash)
-		if err != nil {
-			app.logger.Println("Database logout update error:", err)
 		}
 	}
 

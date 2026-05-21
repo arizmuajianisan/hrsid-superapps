@@ -18,46 +18,34 @@ It will also automatically run the migrations at start.
 
 After run, the apps will serve at port 4000.
 
-```bash
-🚀 make run-dev
+```
 2026/05/14 07:31:46 database connection pool established
-2026/05/14 07:31:46 goose: no migrations to run. current version: 20260513190621
 2026/05/14 07:31:46 database migrations applied successfully
 2026/05/14 07:31:46 starting server on :4000
 ```
 
-### Healthcheck
+### Public Routes
 
-```bash
-get /api/v1/healthcheck
+---
+
+#### Healthcheck
+
+```
+GET /api/v1/healthcheck
 ```
 
-Responses:
+Response: `200 OK`
 
-```bash
-> GET /api/v1/healthcheck HTTP/1.1
-> Host: localhost:4000
-> Cookie: hrs_session=81cd0f87-69a6-41c1-a93f-44baef34182d
-> User-Agent: insomnia/12.5.0
-> Accept: */*
+---
 
-* Mark bundle as not supporting multiuse
+#### Register
 
-< HTTP/1.1 200 OK
-< Access-Control-Allow-Credentials: true
-< Access-Control-Allow-Headers: Content-Type, Authorization
-< Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS
-< Access-Control-Allow-Origin: http://localhost:5173
-< Date: Thu, 14 May 2026 00:43:02 GMT
-< Content-Length: 2
-< Content-Type: text/plain; charset=utf-8
 ```
-
-### Register
-
-```bash
 POST /api/v1/register
+```
+
 Body:
+```json
 {
     "nik": "2024001",
     "email": "developer@hrs-id.com",
@@ -67,89 +55,156 @@ Body:
 }
 ```
 
-Responses:
-
-```bash
+Response `201 Created`:
+```json
 {
-	"user": {
-		"id": "81cd0f87-69a6-41c1-a93f-44baef34182d",
-		"nik": "2024001",
-		"email": "developer@hrs-id.com",
-		"full_name": "Arz Lab Developer",
-		"role": "user",
-		"department_id": 1,
-		"is_active": false,
-		"created_at": "2026-05-14T02:00:56.845503+07:00"
-	}
+    "user": {
+        "id": "1",
+        "nik": "2024001",
+        "email": "developer@hrs-id.com",
+        "full_name": "Arz Lab Developer",
+        "role": "user",
+        "department_id": 1,
+        "is_active": true,
+        "created_at": "2026-05-14T02:00:56.845503+07:00"
+    }
 }
 ```
 
-### Login
+---
 
-```bash
+#### Login
+
+```
 POST /api/v1/login
+```
+
 Body:
+```json
 {
-    "email": "developer@hrs-id.com",
+    "identifier": "developer@hrs-id.com",
     "password": "rahasia-banget"
 }
 ```
 
-Responses:
+`identifier` accepts either email or NIK.
 
-```bash
+Response `200 OK` — sets `hrs_session` HttpOnly cookie (30 days):
+```json
 {
-	"status": "success",
-	"user": {
-		"id": "81cd0f87-69a6-41c1-a93f-44baef34182d",
-		"nik": "2024001",
-		"email": "developer@hrs-id.com",
-		"full_name": "Arz Lab Developer",
-		"role": "user",
-		"department_id": 1,
-		"is_active": true,
-		"created_at": "2026-05-14T02:00:56.845503+07:00"
-	}
+    "access_token": "<jwt>",
+    "user": {
+        "full_name": "Arz Lab Developer",
+        "role": "user"
+    }
 }
 ```
 
-It will generate cookie for 30 days.
+---
 
-### My Apps
+#### Refresh
 
-This will return of apps that available for the users.
-
-```bash
-GET /api/v1/my-apps
+```
+POST /api/v1/refresh
 ```
 
-Responses:
+Requires `hrs_session` cookie. Issues a new access token **and rotates the refresh token** — the old cookie is invalidated and a new one is set.
 
-```bash
+Response `200 OK`:
+```json
 {
-	"applications": [
-		{
-			"id": 1,
-			"name": "Hi-DSign",
-			"slug": "hi-dsign",
-			"base_url": "https://hi-dsign.hrs-id.com",
-			"icon_url": null,
-			"description": "Electronic Drawing Approval System"
-		}
-	]
+    "access_token": "<new_jwt>"
 }
 ```
 
-### Logout
+---
 
-```bash
+#### Logout
+
+```
 POST /api/v1/logout
 ```
 
-Responses:
+Blocks the current session in the database and clears the `hrs_session` cookie. Works even if the access token has already expired.
 
-```bash
+Response `200 OK`:
+```json
 {
-	"message": "logged out successfully"
+    "message": "logged out successfully"
+}
+```
+
+---
+
+### Protected Routes
+
+All protected routes require `Authorization: Bearer <access_token>` header.
+
+---
+
+#### Me
+
+```
+GET /api/v1/me
+```
+
+Response `200 OK`:
+```json
+{
+    "user": {
+        "id": "1",
+        "nik": "2024001",
+        "role": "user",
+        "department_id": 1
+    }
+}
+```
+
+---
+
+#### My Apps
+
+Returns apps accessible to the user's department.
+
+```
+GET /api/v1/my-apps
+```
+
+Response `200 OK`:
+```json
+{
+    "applications": [
+        {
+            "id": 1,
+            "name": "Hi-DSign",
+            "slug": "hi-dsign",
+            "base_url": "https://hi-dsign.hrs-id.com",
+            "icon_url": null,
+            "description": "Electronic Drawing Approval System"
+        }
+    ]
+}
+```
+
+---
+
+### Admin Routes
+
+Requires a valid access token with `role: admin`.
+
+---
+
+#### Deactivate User
+
+Deactivates a user and immediately blocks all their active sessions.
+
+```
+POST /api/v1/admin/users/{public_id}/deactivate
+```
+
+Response `200 OK`:
+```json
+{
+    "message": "User deactivated"
 }
 ```

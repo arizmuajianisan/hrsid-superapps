@@ -21,9 +21,7 @@ func (app *application) routes() http.Handler {
 	myAppsHandler := http.HandlerFunc(app.listMyAppsHandler)
 	mux.Handle("GET /api/v1/my-apps", app.authenticate(myAppsHandler))
 
-	// Logout sekarang diproteksi karena kita butuh mendeteksi session siapa yang mau dihapus di DB
-	logoutHandler := http.HandlerFunc(app.logoutHandler)
-	mux.Handle("POST /api/v1/logout", app.authenticate(logoutHandler))
+	mux.HandleFunc("POST /api/v1/logout", app.logoutHandler)
 
 	// --- ADMIN ONLY ROUTES ---
 	// Perhatikan penggunaan penulisan parameter {id} sesuai standar bawaan Go modern

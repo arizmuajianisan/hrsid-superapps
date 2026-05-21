@@ -14,19 +14,21 @@ type UserClaims struct {
 	NIK          string `json:"nik"`
 	Role         string `json:"role"`
 	DepartmentID int    `json:"department_id"`
+	SessionID    string `json:"session_id"`
 	jwt.RegisteredClaims
 }
 
 // GenerateAccessToken membuat JWT berumur pendek (15 Menit) untuk Frontend
-func GenerateAccessToken(userID, nik, role string, deptID int, secretKey string) (string, error) {
+func GenerateAccessToken(userID, nik, role string, deptID int, sessionID, secretKey string) (string, error) {
 	claims := UserClaims{
 		UserID:       userID,
 		NIK:          nik,
 		Role:         role,
 		DepartmentID: deptID,
+		SessionID:    sessionID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   userID,
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(15 * time.Minute)), // 15 Menit
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(15 * time.Minute)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			NotBefore: jwt.NewNumericDate(time.Now()),
 		},

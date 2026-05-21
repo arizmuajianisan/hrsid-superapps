@@ -42,6 +42,33 @@ func (m SessionModel) Insert(session *Session) error {
 	).Scan(&session.ID, &session.CreatedAt, &session.IsBlocked)
 }
 
+func (m SessionModel) GetByID(id string) (*Session, error) {
+	query := `SELECT id, user_id, is_blocked, expiry FROM sessions WHERE id = $1`
+
+	var session Session
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	err := m.DB.QueryRowContext(ctx, query, id).Scan(
+		&session.ID, &session.UserID, &session.IsBlocked, &session.Expiry,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrRecordNotFound
+		}
+		return nil, err
+	}
+	return &session, nil
+}
+
+func (m SessionModel) BlockByID(id string) error {
+	query := `UPDATE sessions SET is_blocked = true WHERE id = $1`
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	_, err := m.DB.ExecContext(ctx, query, id)
+	return err
+}
+
 // GetByRefreshToken mencari session yang aktif berdasarkan token yang dikirim user
 func (m SessionModel) GetByRefreshToken(token string) (*Session, error) {
 	// Kita hitung SHA256 hash dari token yang masuk untuk dicocokkan dengan DB

@@ -60,8 +60,14 @@ func (app *application) authenticate(next http.Handler) http.Handler {
 			return
 		}
 
-		// 5. Ubah claims menjadi struct data.User (hanya field krusial yang kita butuhkan)
-		// Dengan begini, handler di hilir tidak perlu diubah kodenya
+		// 5. Verifikasi session ke DB — menangkap logout & deactivate secara instan
+		session, err := app.models.Sessions.GetByID(claims.SessionID)
+		if err != nil || session.IsBlocked || session.Expiry.Before(time.Now()) {
+			http.Error(w, "Unauthorized: Session is invalid", http.StatusUnauthorized)
+			return
+		}
+
+		// 6. Ubah claims menjadi struct data.User
 		user := &data.User{
 			ID:           claims.UserID,
 			NIK:          claims.NIK,
