@@ -198,6 +198,30 @@ func (m UserModel) Deactivate(id int64) error {
 	return tx.Commit()
 }
 
+func (m UserModel) Reactivate(id int64) error {
+	queryUser := `UPDATE users SET is_active = true WHERE id = $1`
+	querySessions := `UPDATE sessions SET is_blocked = false WHERE user_id = $1`
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	tx, err := m.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, queryUser, id); err != nil {
+		return err
+	}
+
+	if _, err := tx.ExecContext(ctx, querySessions, id); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
 // GetInternalIDByPublicID membantu kita mendapatkan ID (BIGINT) dari PublicID (UUID)
 func (m UserModel) GetInternalIDByPublicID(publicID string) (int64, error) {
 	query := `SELECT id FROM users WHERE public_id = $1`

@@ -28,5 +28,8 @@ func (app *application) routes() http.Handler {
 	deactivateHandler := http.HandlerFunc(app.deactivateUserHandler)
 	mux.Handle("POST /api/v1/admin/users/{id}/deactivate", app.authenticate(app.requireAdmin(deactivateHandler)))
 
+	reactivateHandler := http.HandlerFunc(app.reactivateUserHandler)
+	mux.Handle("POST /api/v1/admin/users/{id}/reactivate", app.authenticate(app.requireAdmin(reactivateHandler)))
+
 	return app.recoverPanic(app.enableCORS(app.logRequest(mux)))
 }

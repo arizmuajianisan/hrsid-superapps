@@ -208,3 +208,20 @@ Response `200 OK`:
     "message": "User deactivated"
 }
 ```
+
+#### Reactivate User
+
+Reactivates a user.
+
+```
+POST /api/v1/admin/users/{public_id}/reactivate
+```
+
+Response `200 OK`:
+```json
+{
+    "message": "User reactivated"
+}
+```
+
+---

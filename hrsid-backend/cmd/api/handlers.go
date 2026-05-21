@@ -349,3 +349,25 @@ func (app *application) deactivateUserHandler(w http.ResponseWriter, r *http.Req
 
 	app.writeJSON(w, http.StatusOK, map[string]string{"message": "User deactivated"}, nil)
 }
+
+func (app *application) reactivateUserHandler(w http.ResponseWriter, r *http.Request) {
+	publicID := r.PathValue("id")
+
+	internalID, err := app.models.Users.GetInternalIDByPublicID(publicID)
+	if err != nil {
+		if errors.Is(err, data.ErrRecordNotFound) {
+			http.Error(w, "User not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	err = app.models.Users.Reactivate(internalID) // Pastikan method Reactivate menerima int64
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	app.writeJSON(w, http.StatusOK, map[string]string{"message": "User reactivated"}, nil)
+}
