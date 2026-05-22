@@ -1,27 +1,27 @@
 <script setup lang="ts">
-definePageMeta({ layout: "auth" });
+definePageMeta({ layout: 'auth' })
 
-const auth = useAuthStore();
-const router = useRouter();
+const auth = useAuthStore()
+const router = useRouter()
 
 if (auth.isAuthenticated) {
-  await navigateTo("/");
+  await navigateTo('/')
 }
 
-const form = reactive({ identifier: "", password: "" });
-const errorMessage = ref<string | null>(null);
-const isLoading = ref(false);
+const form = reactive({ identifier: '', password: '' })
+const errorMessage = ref<string | null>(null)
+const isLoading = ref(false)
 
 async function handleLogin() {
-  errorMessage.value = null;
-  isLoading.value = true;
+  errorMessage.value = null
+  isLoading.value = true
   try {
-    await auth.login(form.identifier, form.password);
-    await router.push("/");
+    await auth.login(form.identifier, form.password)
+    await router.push('/')
   } catch {
-    errorMessage.value = "Identifier atau password salah. Silakan coba lagi.";
+    errorMessage.value = 'Identifier atau password salah. Silakan coba lagi.'
   } finally {
-    isLoading.value = false;
+    isLoading.value = false
   }
 }
 </script>
@@ -29,15 +29,10 @@ async function handleLogin() {
 <template>
   <UCard>
     <template #header>
-      <h2 class="text-xl font-semibold text-center">
-        Masuk ke Akun Anda
-      </h2>
+      <h2 class="text-xl font-semibold text-center">Masuk ke Akun Anda</h2>
     </template>
 
-    <form
-      class="flex flex-col gap-4"
-      @submit.prevent="handleLogin"
-    >
+    <form class="flex flex-col gap-4" @submit.prevent="handleLogin">
       <UAlert
         v-if="errorMessage"
         color="error"
@@ -46,10 +41,7 @@ async function handleLogin() {
         icon="i-lucide-circle-x"
       />
 
-      <UFormField
-        label="Identifier (Email / NIK)"
-        required
-      >
+      <UFormField label="Identifier (Email / NIK)" required>
         <UInput
           v-model="form.identifier"
           placeholder="email@hrs-id.com atau NIK"
@@ -58,10 +50,7 @@ async function handleLogin() {
         />
       </UFormField>
 
-      <UFormField
-        label="Password"
-        required
-      >
+      <UFormField label="Password" required>
         <UInput
           v-model="form.password"
           type="password"
@@ -71,13 +60,7 @@ async function handleLogin() {
         />
       </UFormField>
 
-      <UButton
-        type="submit"
-        label="Masuk"
-        block
-        :loading="isLoading"
-        class="mt-2"
-      />
+      <UButton type="submit" label="Masuk" block :loading="isLoading" class="mt-2" />
     </form>
   </UCard>
 </template>
