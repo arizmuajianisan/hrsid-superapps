@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -29,6 +30,7 @@ func (app *application) loginHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := app.models.Users.GetByIdentifier(input.Identifier)
 	if err != nil {
 		if errors.Is(err, data.ErrRecordNotFound) {
+			app.audit("login.failure", nil, &input.Identifier, nil, r, map[string]any{"reason": "user_not_found"})
 			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 			return
 		}
@@ -40,6 +42,7 @@ func (app *application) loginHandler(w http.ResponseWriter, r *http.Request) {
 	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(input.Password))
 	if err != nil {
 		if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
+			app.audit("login.failure", &user.ID, &input.Identifier, nil, r, map[string]any{"reason": "bad_password"})
 			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 			return
 		}
@@ -62,7 +65,7 @@ func (app *application) loginHandler(w http.ResponseWriter, r *http.Request) {
 	session := &data.Session{
 		UserID:           user.ID,
 		RefreshTokenHash: refreshTokenHash,
-		IPAddress:        r.RemoteAddr, // Nanti bisa dipoles untuk menangani Cloudflare IP
+		IPAddress:        clientIP(r),
 		UserAgent:        r.UserAgent(),
 		Expiry:           time.Now().Add(30 * 24 * time.Hour), // 30 Hari
 	}
@@ -99,6 +102,9 @@ func (app *application) loginHandler(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 	}
 	http.SetCookie(w, cookie)
+
+	// Audit login sukses
+	app.audit("login.success", &user.ID, &user.Email, nil, r, map[string]any{"session_id": session.ID})
 
 	// 10. Kirim Access Token ke Frontend via JSON Response
 	responseData := map[string]interface{}{
@@ -163,7 +169,7 @@ func (app *application) refreshHandler(w http.ResponseWriter, r *http.Request) {
 	newSession := &data.Session{
 		UserID:           user.ID,
 		RefreshTokenHash: hash[:],
-		IPAddress:        r.RemoteAddr,
+		IPAddress:        clientIP(r),
 		UserAgent:        r.UserAgent(),
 		Expiry:           time.Now().Add(30 * 24 * time.Hour),
 	}
@@ -196,6 +202,11 @@ func (app *application) refreshHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
+
+	app.audit("token.refresh", &user.ID, nil, nil, r, map[string]any{
+		"old_session_id": session.ID,
+		"new_session_id": newSession.ID,
+	})
 
 	app.writeJSON(w, http.StatusOK, map[string]interface{}{"access_token": accessToken}, nil)
 }
@@ -249,6 +260,18 @@ func (app *application) registerUserHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Audit pembuatan user. Jika dipicu admin (via dashboard), context user akan ada;
+	// jika publik /register, actor null.
+	var actorID *string
+	if actor := app.contextGetUser(r); actor != nil {
+		actorID = &actor.ID
+	}
+	app.audit("user.create", actorID, nil, &user.ID, r, map[string]any{
+		"nik":   user.NIK,
+		"email": user.Email,
+		"role":  user.Role,
+	})
+
 	// 6. Berikan response sukses
 	err = app.writeJSON(w, http.StatusCreated, map[string]interface{}{"user": user}, nil)
 	if err != nil {
@@ -277,6 +300,16 @@ func (app *application) logoutHandler(w http.ResponseWriter, r *http.Request) {
 		hash := sha256.Sum256([]byte(cookie.Value))
 		tokenHash := hash[:]
 
+		// Ambil user_id dulu untuk audit log (sebelum sesi di-block)
+		var userID string
+		var sessionID string
+		ctxQ, cancelQ := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancelQ()
+		_ = app.db.QueryRowContext(ctxQ,
+			`SELECT id, user_id FROM sessions WHERE refresh_token_hash = $1`,
+			tokenHash,
+		).Scan(&sessionID, &userID)
+
 		query := `UPDATE sessions SET is_blocked = true WHERE refresh_token_hash = $1`
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
@@ -287,6 +320,9 @@ func (app *application) logoutHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			rows, _ := result.RowsAffected()
 			app.logger.Printf("Logout: %d session blocked", rows)
+			if rows > 0 && userID != "" {
+				app.audit("logout", &userID, nil, nil, r, map[string]any{"session_id": sessionID})
+			}
 		}
 	}
 
@@ -366,6 +402,14 @@ func (app *application) deactivateUserHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	actor := app.contextGetUser(r)
+	targetID := strconv.FormatInt(internalID, 10)
+	var actorID *string
+	if actor != nil {
+		actorID = &actor.ID
+	}
+	app.audit("user.deactivate", actorID, nil, &targetID, r, map[string]any{"target_public_id": publicID})
+
 	app.writeJSON(w, http.StatusOK, map[string]string{"message": "User deactivated"}, nil)
 }
 
@@ -388,5 +432,91 @@ func (app *application) reactivateUserHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	actor := app.contextGetUser(r)
+	targetID := strconv.FormatInt(internalID, 10)
+	var actorID *string
+	if actor != nil {
+		actorID = &actor.ID
+	}
+	app.audit("user.reactivate", actorID, nil, &targetID, r, map[string]any{"target_public_id": publicID})
+
 	app.writeJSON(w, http.StatusOK, map[string]string{"message": "User reactivated"}, nil)
+}
+
+// --- Session management (current user) ---
+
+func (app *application) listMySessionsHandler(w http.ResponseWriter, r *http.Request) {
+	user := app.contextGetUser(r)
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	sessions, err := app.models.Sessions.ListByUserID(user.ID)
+	if err != nil {
+		app.logger.Println(err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	currentSessionID, _ := r.Context().Value(sessionIDContextKey).(string)
+
+	app.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"sessions":           sessions,
+		"current_session_id": currentSessionID,
+	}, nil)
+}
+
+func (app *application) revokeMySessionHandler(w http.ResponseWriter, r *http.Request) {
+	user := app.contextGetUser(r)
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	sessionID := r.PathValue("id")
+	if sessionID == "" {
+		http.Error(w, "Bad Request: missing session id", http.StatusBadRequest)
+		return
+	}
+
+	// Cegah user me-revoke session yang sedang dipakai request ini — pakai /logout.
+	if current, _ := r.Context().Value(sessionIDContextKey).(string); current != "" && current == sessionID {
+		http.Error(w, "Cannot revoke current session; use logout instead", http.StatusBadRequest)
+		return
+	}
+
+	err := app.models.Sessions.BlockByIDAndUserID(sessionID, user.ID)
+	if err != nil {
+		if errors.Is(err, data.ErrRecordNotFound) {
+			http.Error(w, "Session not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	app.audit("session.revoke", &user.ID, nil, &user.ID, r, map[string]any{"session_id": sessionID})
+
+	app.writeJSON(w, http.StatusOK, map[string]string{"message": "Session revoked"}, nil)
+}
+
+// --- Audit log (admin) ---
+
+func (app *application) listAuditLogsHandler(w http.ResponseWriter, r *http.Request) {
+	limit := 200
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			limit = n
+		}
+	}
+
+	logs, err := app.models.AuditLogs.GetAll(limit)
+	if err != nil {
+		app.logger.Println(err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	app.writeJSON(w, http.StatusOK, map[string]interface{}{"logs": logs}, nil)
 }

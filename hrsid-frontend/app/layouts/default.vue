@@ -5,12 +5,25 @@ const { isAdmin, user } = storeToRefs(auth)
 const userMenuItems = computed(() => {
   const groups = []
 
+  groups.push([
+    {
+      label: 'Sesi Saya',
+      icon: 'i-lucide-monitor',
+      to: '/sessions'
+    }
+  ])
+
   if (isAdmin.value) {
     groups.push([
       {
         label: 'Manajemen User',
         icon: 'i-lucide-users',
         to: '/admin/users'
+      },
+      {
+        label: 'Audit Log',
+        icon: 'i-lucide-scroll-text',
+        to: '/admin/audit'
       }
     ])
   }

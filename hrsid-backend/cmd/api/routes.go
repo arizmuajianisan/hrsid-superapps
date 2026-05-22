@@ -23,6 +23,13 @@ func (app *application) routes() http.Handler {
 
 	mux.HandleFunc("POST /api/v1/logout", app.logoutHandler)
 
+	// Manajemen sesi milik user yang sedang login
+	listMySessions := http.HandlerFunc(app.listMySessionsHandler)
+	mux.Handle("GET /api/v1/sessions", app.authenticate(listMySessions))
+
+	revokeMySession := http.HandlerFunc(app.revokeMySessionHandler)
+	mux.Handle("POST /api/v1/sessions/{id}/revoke", app.authenticate(revokeMySession))
+
 	// --- ADMIN ONLY ROUTES ---
 	listUsersHandler := http.HandlerFunc(app.listUsersHandler)
 	mux.Handle("GET /api/v1/admin/users", app.authenticate(app.requireAdmin(listUsersHandler)))
@@ -33,6 +40,9 @@ func (app *application) routes() http.Handler {
 
 	reactivateHandler := http.HandlerFunc(app.reactivateUserHandler)
 	mux.Handle("POST /api/v1/admin/users/{id}/reactivate", app.authenticate(app.requireAdmin(reactivateHandler)))
+
+	listAuditLogs := http.HandlerFunc(app.listAuditLogsHandler)
+	mux.Handle("GET /api/v1/admin/audit-logs", app.authenticate(app.requireAdmin(listAuditLogs)))
 
 	return app.recoverPanic(app.enableCORS(app.logRequest(mux)))
 }

@@ -16,6 +16,7 @@ import (
 type contextKey string
 
 const userContextKey = contextKey("user")
+const sessionIDContextKey = contextKey("session_id")
 
 type loggingResponseWriter struct {
 	http.ResponseWriter
@@ -75,8 +76,9 @@ func (app *application) authenticate(next http.Handler) http.Handler {
 			DepartmentID: claims.DepartmentID,
 		}
 
-		// 6. Masukkan objek user ke Context dan teruskan request
+		// 6. Masukkan objek user dan session ID ke Context, lalu teruskan request
 		ctx := context.WithValue(r.Context(), userContextKey, user)
+		ctx = context.WithValue(ctx, sessionIDContextKey, claims.SessionID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

@@ -69,6 +69,61 @@ func (m SessionModel) BlockByID(id string) error {
 	return err
 }
 
+// ListByUserID mengambil semua session milik user tertentu (untuk halaman "Sesi Saya")
+func (m SessionModel) ListByUserID(userID string) ([]*Session, error) {
+	query := `
+		SELECT id, user_id, ip_address, user_agent, is_blocked, expiry, created_at
+		FROM sessions
+		WHERE user_id = $1
+		ORDER BY created_at DESC
+		LIMIT 100`
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	rows, err := m.DB.QueryContext(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	sessions := []*Session{}
+	for rows.Next() {
+		var s Session
+		err := rows.Scan(
+			&s.ID, &s.UserID, &s.IPAddress, &s.UserAgent,
+			&s.IsBlocked, &s.Expiry, &s.CreatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		sessions = append(sessions, &s)
+	}
+	return sessions, rows.Err()
+}
+
+// BlockByIDAndUserID memblokir session hanya jika benar-benar milik userID tsb
+// (mencegah user lain memblokir session orang lain). Mengembalikan ErrRecordNotFound
+// jika tidak ada baris yang cocok.
+func (m SessionModel) BlockByIDAndUserID(id, userID string) error {
+	query := `UPDATE sessions SET is_blocked = true WHERE id = $1 AND user_id = $2`
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	res, err := m.DB.ExecContext(ctx, query, id, userID)
+	if err != nil {
+		return err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrRecordNotFound
+	}
+	return nil
+}
+
 // GetByRefreshToken mencari session yang aktif berdasarkan token yang dikirim user
 func (m SessionModel) GetByRefreshToken(token string) (*Session, error) {
 	// Kita hitung SHA256 hash dari token yang masuk untuk dicocokkan dengan DB

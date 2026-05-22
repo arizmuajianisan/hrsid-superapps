@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
+	"strings"
 
 	"github.com/arizmuajianisan/hrsid-backend/internal/data"
 )
@@ -39,6 +41,43 @@ func (app *application) readJSON(w http.ResponseWriter, r *http.Request, dst int
 	}
 
 	return nil
+}
+
+// clientIP mengekstrak IP asli klien. Prioritas: X-Forwarded-For pertama,
+// lalu X-Real-IP, lalu r.RemoteAddr (di-strip portnya).
+func clientIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		// Format: "client, proxy1, proxy2" — ambil yang paling kiri
+		if idx := strings.Index(xff, ","); idx != -1 {
+			return strings.TrimSpace(xff[:idx])
+		}
+		return strings.TrimSpace(xff)
+	}
+	if xrip := r.Header.Get("X-Real-IP"); xrip != "" {
+		return strings.TrimSpace(xrip)
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
+// audit menulis entri audit log secara best-effort: kegagalan hanya di-log,
+// tidak menggagalkan request induk.
+func (app *application) audit(action string, actorUserID, actorIdentifier, targetUserID *string, r *http.Request, metadata map[string]any) {
+	err := app.models.AuditLogs.Insert(
+		action,
+		actorUserID,
+		actorIdentifier,
+		targetUserID,
+		clientIP(r),
+		r.UserAgent(),
+		metadata,
+	)
+	if err != nil {
+		app.logger.Printf("audit insert failed (action=%s): %v", action, err)
+	}
 }
 
 func (app *application) contextGetUser(r *http.Request) *data.User {

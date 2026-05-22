@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(go build *)"
+      "Bash(go build *)",
+      "Bash(rtk ls *)",
+      "Bash(rtk read *)",
+      "Bash(rtk go *)",
+      "Bash(rtk lint *)"
     ]
   }
 }
