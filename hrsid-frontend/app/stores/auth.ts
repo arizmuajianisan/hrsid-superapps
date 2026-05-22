@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia';
+import { defineStore } from "pinia";
 
 interface AuthUser {
   fullName: string;
@@ -17,33 +17,39 @@ interface RefreshResponse {
   access_token: string;
 }
 
-export const useAuthStore = defineStore('auth', () => {
+interface MeResponse {
+  user: {
+    full_name: string;
+    role: string;
+  };
+}
+
+export const useAuthStore = defineStore("auth", () => {
   const config = useRuntimeConfig();
   const accessToken = ref<string | null>(null);
   const user = ref<AuthUser | null>(null);
 
   const isAuthenticated = computed(() => !!accessToken.value);
-  const isAdmin = computed(() => user.value?.role === 'admin');
+  const isAdmin = computed(() => user.value?.role === "admin");
 
   let refreshPromise: Promise<void> | null = null;
 
   async function login(identifier: string, password: string) {
-    const data = await $fetch<LoginResponse>('/api/v1/login', {
+    const data = await $fetch<LoginResponse>("/api/v1/login", {
       baseURL: config.public.apiBase,
-      method: 'POST',
-      credentials: 'include',
+      method: "POST",
+      credentials: "include",
       body: { identifier, password }
     });
     accessToken.value = data.access_token;
     user.value = { fullName: data.user.full_name, role: data.user.role };
-    console.log('User role:', user.value.role);
   }
 
   async function _doRefresh() {
-    const data = await $fetch<RefreshResponse>('/api/v1/refresh', {
+    const data = await $fetch<RefreshResponse>("/api/v1/refresh", {
       baseURL: config.public.apiBase,
-      method: 'POST',
-      credentials: 'include'
+      method: "POST",
+      credentials: "include"
     });
     accessToken.value = data.access_token;
   }
@@ -56,14 +62,29 @@ export const useAuthStore = defineStore('auth', () => {
     return refreshPromise;
   }
 
+  async function initAuth() {
+    try {
+      await _doRefresh();
+      const data = await $fetch<MeResponse>("/api/v1/me", {
+        baseURL: config.public.apiBase,
+        credentials: "include",
+        headers: { Authorization: `Bearer ${accessToken.value}` }
+      });
+      user.value = { fullName: data.user.full_name, role: data.user.role };
+    } catch (err) {
+      console.warn("[initAuth] Session restore failed:", err);
+      clearAuth();
+    }
+  }
+
   async function logout() {
-    await $fetch('/api/v1/logout', {
+    await $fetch("/api/v1/logout", {
       baseURL: config.public.apiBase,
-      method: 'POST',
-      credentials: 'include'
+      method: "POST",
+      credentials: "include"
     }).catch(() => {});
     clearAuth();
-    await navigateTo('/login');
+    await navigateTo("/login");
   }
 
   function clearAuth() {
@@ -79,6 +100,7 @@ export const useAuthStore = defineStore('auth', () => {
     login,
     logout,
     refreshToken,
-    clearAuth
+    clearAuth,
+    initAuth
   };
 });

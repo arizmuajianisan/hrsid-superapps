@@ -1,14 +1,14 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'auth' });
+definePageMeta({ layout: "auth" });
 
 const auth = useAuthStore();
 const router = useRouter();
 
 if (auth.isAuthenticated) {
-  await navigateTo('/');
+  await navigateTo("/");
 }
 
-const form = reactive({ identifier: '', password: '' });
+const form = reactive({ identifier: "", password: "" });
 const errorMessage = ref<string | null>(null);
 const isLoading = ref(false);
 
@@ -17,9 +17,9 @@ async function handleLogin() {
   isLoading.value = true;
   try {
     await auth.login(form.identifier, form.password);
-    await router.push('/');
+    await router.push("/");
   } catch {
-    errorMessage.value = 'Identifier atau password salah. Silakan coba lagi.';
+    errorMessage.value = "Identifier atau password salah. Silakan coba lagi.";
   } finally {
     isLoading.value = false;
   }

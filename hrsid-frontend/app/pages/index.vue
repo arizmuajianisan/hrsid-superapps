@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ middleware: 'auth', layout: 'default' });
+definePageMeta({ middleware: "auth", layout: "default" });
 
 interface Application {
   id: number;
@@ -12,8 +12,8 @@ interface Application {
 
 const { apiFetch } = useApi();
 
-const { data, status } = await useAsyncData('my-apps', () =>
-  apiFetch<{ applications: Application[] }>('/api/v1/my-apps')
+const { data, status } = await useAsyncData("my-apps", () =>
+  apiFetch<{ applications: Application[] }>("/api/v1/my-apps")
 );
 
 const apps = computed(() => data.value?.applications ?? []);

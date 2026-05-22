@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ middleware: ['auth', 'admin'], layout: 'default' });
+definePageMeta({ middleware: ["auth", "admin"], layout: "default" });
 
 interface User {
   public_id: string;
@@ -16,19 +16,19 @@ const { apiFetch } = useApi();
 const toast = useToast();
 
 // --- User list ---
-const { data, refresh, status } = await useAsyncData('admin-users', () =>
-  apiFetch<{ users: User[] }>('/api/v1/admin/users')
+const { data, refresh, status } = await useAsyncData("admin-users", () =>
+  apiFetch<{ users: User[] }>("/api/v1/admin/users")
 );
 const users = computed(() => data.value?.users ?? []);
 
 const columns = [
-  { key: 'nik', label: 'NIK' },
-  { key: 'full_name', label: 'Nama Lengkap' },
-  { key: 'email', label: 'Email' },
-  { key: 'role', label: 'Role' },
-  { key: 'department_id', label: 'Dept.' },
-  { key: 'is_active', label: 'Status' },
-  { key: 'actions', label: 'Aksi' }
+  { accessorKey: "nik", header: "NIK" },
+  { accessorKey: "full_name", header: "Nama Lengkap" },
+  { accessorKey: "email", header: "Email" },
+  { accessorKey: "role", header: "Role" },
+  { accessorKey: "department_id", header: "Dept." },
+  { accessorKey: "is_active", header: "Status" },
+  { id: "actions", header: "Aksi" }
 ];
 
 // --- Deactivate / Reactivate ---
@@ -37,11 +37,21 @@ const actionLoading = ref<string | null>(null);
 async function deactivate(publicId: string) {
   actionLoading.value = publicId;
   try {
-    await apiFetch(`/api/v1/admin/users/${publicId}/deactivate`, { method: 'POST' });
-    toast.add({ title: 'Berhasil', description: 'User berhasil dinonaktifkan.', color: 'success' });
+    await apiFetch(`/api/v1/admin/users/${publicId}/deactivate`, {
+      method: "POST"
+    });
+    toast.add({
+      title: "Berhasil",
+      description: "User berhasil dinonaktifkan.",
+      color: "success"
+    });
     await refresh();
   } catch {
-    toast.add({ title: 'Gagal', description: 'Terjadi kesalahan. Silakan coba lagi.', color: 'error' });
+    toast.add({
+      title: "Gagal",
+      description: "Terjadi kesalahan. Silakan coba lagi.",
+      color: "error"
+    });
   } finally {
     actionLoading.value = null;
   }
@@ -50,11 +60,21 @@ async function deactivate(publicId: string) {
 async function reactivate(publicId: string) {
   actionLoading.value = publicId;
   try {
-    await apiFetch(`/api/v1/admin/users/${publicId}/reactivate`, { method: 'POST' });
-    toast.add({ title: 'Berhasil', description: 'User berhasil diaktifkan.', color: 'success' });
+    await apiFetch(`/api/v1/admin/users/${publicId}/reactivate`, {
+      method: "POST"
+    });
+    toast.add({
+      title: "Berhasil",
+      description: "User berhasil diaktifkan.",
+      color: "success"
+    });
     await refresh();
   } catch {
-    toast.add({ title: 'Gagal', description: 'Terjadi kesalahan. Silakan coba lagi.', color: 'error' });
+    toast.add({
+      title: "Gagal",
+      description: "Terjadi kesalahan. Silakan coba lagi.",
+      color: "error"
+    });
   } finally {
     actionLoading.value = null;
   }
@@ -63,10 +83,10 @@ async function reactivate(publicId: string) {
 // --- Create User modal ---
 const isModalOpen = ref(false);
 const createForm = reactive({
-  nik: '',
-  email: '',
-  password: '',
-  full_name: '',
+  nik: "",
+  email: "",
+  password: "",
+  full_name: "",
   department_id: 1
 });
 const createError = ref<string | null>(null);
@@ -74,7 +94,13 @@ const createLoading = ref(false);
 
 function openModal() {
   createError.value = null;
-  Object.assign(createForm, { nik: '', email: '', password: '', full_name: '', department_id: 1 });
+  Object.assign(createForm, {
+    nik: "",
+    email: "",
+    password: "",
+    full_name: "",
+    department_id: 1
+  });
   isModalOpen.value = true;
 }
 
@@ -83,9 +109,9 @@ async function handleCreateUser() {
   createLoading.value = true;
   try {
     const config = useRuntimeConfig();
-    await $fetch('/api/v1/register', {
+    await $fetch("/api/v1/register", {
       baseURL: config.public.apiBase,
-      method: 'POST',
+      method: "POST",
       body: {
         nik: createForm.nik,
         email: createForm.email,
@@ -95,17 +121,55 @@ async function handleCreateUser() {
       }
     });
     isModalOpen.value = false;
-    toast.add({ title: 'Berhasil', description: 'User baru berhasil dibuat.', color: 'success' });
+    toast.add({
+      title: "Berhasil",
+      description: "User baru berhasil dibuat.",
+      color: "success"
+    });
     await refresh();
   } catch (err: unknown) {
     const fetchErr = err as { response?: { status?: number } };
     if (fetchErr.response?.status === 409) {
-      createError.value = 'Email atau NIK sudah terdaftar.';
+      createError.value = "Email atau NIK sudah terdaftar.";
     } else {
-      createError.value = 'Terjadi kesalahan. Silakan coba lagi.';
+      createError.value = "Terjadi kesalahan. Silakan coba lagi.";
     }
   } finally {
     createLoading.value = false;
+  }
+}
+
+// --- Confirmation modal ---
+const confirmModal = reactive({
+  open: false,
+  type: null as "deactivate" | "reactivate" | null,
+  user: null as User | null
+});
+
+function openConfirm(type: "deactivate" | "reactivate", user: User) {
+  confirmModal.type = type;
+  confirmModal.user = user;
+  confirmModal.open = true;
+}
+
+function closeConfirm() {
+  confirmModal.open = false;
+  confirmModal.type = null;
+  confirmModal.user = null;
+}
+
+async function handleConfirmAction() {
+  if (!confirmModal.user || !confirmModal.type) return;
+
+  // Simpan dulu sebelum di-reset oleh closeConfirm()
+  const { type, user } = confirmModal; // ✅
+
+  closeConfirm();
+
+  if (type === "deactivate") {
+    await deactivate(user.public_id);
+  } else {
+    await reactivate(user.public_id);
   }
 }
 </script>
@@ -158,7 +222,7 @@ async function handleCreateUser() {
             variant="soft"
             size="xs"
             :loading="actionLoading === row.original.public_id"
-            @click="deactivate(row.original.public_id)"
+            @click="openConfirm('deactivate', row.original)"
           />
           <UButton
             v-else
@@ -167,7 +231,7 @@ async function handleCreateUser() {
             variant="soft"
             size="xs"
             :loading="actionLoading === row.original.public_id"
-            @click="reactivate(row.original.public_id)"
+            @click="openConfirm('reactivate', row.original)"
           />
         </template>
       </UTable>
@@ -263,6 +327,78 @@ async function handleCreateUser() {
             />
           </div>
         </form>
+      </template>
+    </UModal>
+    <!-- Confirmation Modal -->
+    <UModal
+      v-model:open="confirmModal.open"
+      :title="
+        confirmModal.type === 'deactivate'
+          ? 'Nonaktifkan User'
+          : 'Aktifkan User'
+      "
+      :ui="{ footer: 'justify-end' }"
+    >
+      <template #body>
+        <div class="flex items-start gap-4">
+          <div
+            :class="[
+              'flex items-center justify-center rounded-full p-2 shrink-0',
+              confirmModal.type === 'deactivate'
+                ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
+                : 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400'
+            ]"
+          >
+            <UIcon
+              :name="
+                confirmModal.type === 'deactivate'
+                  ? 'i-lucide-user-x'
+                  : 'i-lucide-user-check'
+              "
+              class="w-5 h-5"
+            />
+          </div>
+
+          <div>
+            <p class="font-medium text-sm text-highlighted">
+              {{
+                confirmModal.type === "deactivate"
+                  ? "Yakin ingin menonaktifkan user ini?"
+                  : "Yakin ingin mengaktifkan user ini?"
+              }}
+            </p>
+            <p class="text-sm text-muted mt-1">
+              <span class="font-semibold text-default">{{
+                confirmModal.user?.full_name
+              }}</span>
+              ({{ confirmModal.user?.email }}) akan
+              {{
+                confirmModal.type === "deactivate"
+                  ? "kehilangan akses ke sistem."
+                  : "mendapatkan kembali akses ke sistem."
+              }}
+            </p>
+          </div>
+        </div>
+      </template>
+
+      <template #footer>
+        <UButton
+          label="Batal"
+          color="neutral"
+          variant="outline"
+          @click="closeConfirm"
+        />
+        <UButton
+          :label="
+            confirmModal.type === 'deactivate'
+              ? 'Ya, Nonaktifkan'
+              : 'Ya, Aktifkan'
+          "
+          :color="confirmModal.type === 'deactivate' ? 'error' : 'success'"
+          :loading="!!actionLoading"
+          @click="handleConfirmAction"
+        />
       </template>
     </UModal>
   </div>

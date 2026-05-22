@@ -1,12 +1,30 @@
 <script setup lang="ts">
 const auth = useAuthStore();
+const { isAdmin, user } = storeToRefs(auth);
 
-const links = computed(() => {
-  const base = [{ label: 'Dashboard', to: '/', icon: 'i-lucide-layout-dashboard' }];
-  if (auth.isAdmin) {
-    base.push({ label: 'Manajemen User', to: '/admin/users', icon: 'i-lucide-users' });
+const userMenuItems = computed(() => {
+  const groups = [];
+
+  if (isAdmin.value) {
+    groups.push([
+      {
+        label: "Manajemen User",
+        icon: "i-lucide-users",
+        to: "/admin/users"
+      }
+    ]);
   }
-  return base;
+
+  groups.push([
+    {
+      label: "Logout",
+      icon: "i-lucide-log-out",
+      color: "error" as const,
+      onSelect: () => auth.logout()
+    }
+  ]);
+
+  return groups;
 });
 </script>
 
@@ -26,25 +44,28 @@ const links = computed(() => {
         </NuxtLink>
       </template>
 
-      <template #body>
-        <UNavigationMenu
-          :links="links"
-          class="hidden md:flex"
-        />
-      </template>
-
       <template #right>
-        <div class="flex items-center gap-3">
-          <span class="text-sm text-muted hidden sm:block">{{ auth.user?.fullName }}</span>
+        <UDropdownMenu :items="userMenuItems">
           <UButton
-            label="Logout"
-            icon="i-lucide-log-out"
             color="neutral"
             variant="ghost"
-            size="sm"
-            @click="auth.logout()"
-          />
-        </div>
+            trailing-icon="i-lucide-chevron-down"
+            class="gap-2"
+          >
+            <div class="text-left hidden sm:block">
+              <p class="text-sm font-medium leading-none">
+                {{ user?.fullName }}
+              </p>
+              <p class="text-xs text-muted mt-0.5 capitalize">
+                {{ user?.role }} {{ user?.dept }}
+              </p>
+            </div>
+            <UIcon
+              name="i-lucide-user-circle"
+              class="size-5 sm:hidden"
+            />
+          </UButton>
+        </UDropdownMenu>
       </template>
     </UHeader>
 

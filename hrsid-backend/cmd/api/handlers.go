@@ -305,19 +305,27 @@ func (app *application) logoutHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *application) meHandler(w http.ResponseWriter, r *http.Request) {
-	// Mengambil data user yang sudah divalidasi oleh middleware dari context
-	user, ok := r.Context().Value(userContextKey).(*data.User)
+	userCtx, ok := r.Context().Value(userContextKey).(*data.User)
 	if !ok {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	// Karena di middleware kita hanya set 4 field krusial, kita bisa return ini langsung.
-	// Jika nanti butuh data lengkap (seperti Email/Tanggal Join), Anda bisa lakukan query DB di sini menggunakan user.ID.
+	user, err := app.models.Users.GetByID(userCtx.ID)
+	if err != nil {
+		if errors.Is(err, data.ErrRecordNotFound) {
+			http.Error(w, "Unauthorized: User not found", http.StatusUnauthorized)
+			return
+		}
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
 	responseData := map[string]interface{}{
 		"user": map[string]interface{}{
 			"id":            user.ID,
 			"nik":           user.NIK,
+			"full_name":     user.FullName,
 			"role":          user.Role,
 			"department_id": user.DepartmentID,
 		},
