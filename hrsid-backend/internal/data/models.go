@@ -9,6 +9,7 @@ type Models struct {
 	Sessions     SessionModel
 	AuditLogs    AuditLogModel
 	Departments  DepartmentModel
+	SSOTokens    SSOTokenModel
 }
 
 func NewModels(db *sql.DB) Models {
@@ -18,5 +19,6 @@ func NewModels(db *sql.DB) Models {
 		Sessions:     SessionModel{DB: db},
 		AuditLogs:    AuditLogModel{DB: db},
 		Departments:  DepartmentModel{DB: db},
+		SSOTokens:    SSOTokenModel{DB: db},
 	}
 }

@@ -2,7 +2,9 @@ package data
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"strings"
 	"time"
@@ -17,6 +19,7 @@ type Application struct {
 	BaseURL       string  `json:"base_url"`
 	IconURL       *string `json:"icon_url"`
 	Description   string  `json:"description"`
+	SSOSecret     string  `json:"sso_secret,omitempty"`
 	DepartmentIDs []int   `json:"department_ids"`
 }
 
@@ -56,7 +59,7 @@ func (m ApplicationModel) GetAll() ([]*Application, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	rows, err := m.DB.QueryContext(ctx, `SELECT id, name, slug, base_url, icon_url, description FROM applications ORDER BY name`)
+	rows, err := m.DB.QueryContext(ctx, `SELECT id, name, slug, base_url, icon_url, description, sso_secret FROM applications ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +69,7 @@ func (m ApplicationModel) GetAll() ([]*Application, error) {
 	for rows.Next() {
 		var a Application
 		a.DepartmentIDs = []int{}
-		if err := rows.Scan(&a.ID, &a.Name, &a.Slug, &a.BaseURL, &a.IconURL, &a.Description); err != nil {
+		if err := rows.Scan(&a.ID, &a.Name, &a.Slug, &a.BaseURL, &a.IconURL, &a.Description, &a.SSOSecret); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -98,11 +101,17 @@ func (m ApplicationModel) GetAll() ([]*Application, error) {
 }
 
 func (m ApplicationModel) Create(app *Application) error {
-	query := `INSERT INTO applications (name, slug, base_url, icon_url, description) VALUES ($1, $2, $3, $4, $5) RETURNING id`
+	secret, err := generateSSOSecret()
+	if err != nil {
+		return err
+	}
+	app.SSOSecret = secret
+
+	query := `INSERT INTO applications (name, slug, base_url, icon_url, description, sso_secret) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	err := m.DB.QueryRowContext(ctx, query, app.Name, app.Slug, app.BaseURL, app.IconURL, app.Description).Scan(&app.ID)
+	err = m.DB.QueryRowContext(ctx, query, app.Name, app.Slug, app.BaseURL, app.IconURL, app.Description, app.SSOSecret).Scan(&app.ID)
 	if err != nil {
 		if strings.Contains(err.Error(), "slug") {
 			return ErrDuplicateSlug
@@ -110,6 +119,38 @@ func (m ApplicationModel) Create(app *Application) error {
 		return err
 	}
 	return nil
+}
+
+func generateSSOSecret() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
+
+// GetBySlugAndDept returns the app only if the given department has access to it.
+// Returns ErrRecordNotFound if app doesn't exist or the department has no access.
+func (m ApplicationModel) GetBySlugAndDept(slug string, deptID int) (*Application, error) {
+	query := `
+		SELECT a.id, a.name, a.base_url
+		FROM applications a
+		INNER JOIN department_applications da ON a.id = da.application_id
+		WHERE a.slug = $1 AND da.department_id = $2`
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	var app Application
+	err := m.DB.QueryRowContext(ctx, query, slug, deptID).Scan(&app.ID, &app.Name, &app.BaseURL)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrRecordNotFound
+		}
+		return nil, err
+	}
+	app.Slug = slug
+	return &app, nil
 }
 
 func (m ApplicationModel) Update(app *Application) error {

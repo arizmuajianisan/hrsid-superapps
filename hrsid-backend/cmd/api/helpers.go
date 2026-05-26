@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"net"
 	"net/http"
@@ -78,6 +80,14 @@ func (app *application) audit(action string, actorUserID, actorIdentifier, targe
 	if err != nil {
 		app.logger.Printf("audit insert failed (action=%s): %v", action, err)
 	}
+}
+
+func generateOTT() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }
 
 func (app *application) contextGetUser(r *http.Request) *data.User {

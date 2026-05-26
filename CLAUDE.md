@@ -56,4 +56,5 @@ Semua endpoint berada di bawah prefix `/api/v1`.
 - [x] Admin: Manajemen Aplikasi CRUD (create, edit, delete, assign department access)
 - [x] Admin: Audit Log viewer
 - [x] User: Manajemen Sesi (lihat & revoke sesi aktif)
+- [x] SSO launch flow: `POST /api/v1/launch/{slug}` + `POST /api/v1/sso/validate` (OTT-based, 60s expiry, per-app shared secret)
 - [ ] Hardening production: `Secure` cookie, CORS env var, input validation on `/register`

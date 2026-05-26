@@ -23,6 +23,11 @@ func (app *application) routes() http.Handler {
 
 	mux.HandleFunc("POST /api/v1/logout", app.logoutHandler)
 
+	launchApp := http.HandlerFunc(app.launchAppHandler)
+	mux.Handle("POST /api/v1/launch/{slug}", app.authenticate(launchApp))
+
+	mux.HandleFunc("POST /api/v1/sso/validate", app.ssoValidateHandler)
+
 	// Manajemen sesi milik user yang sedang login
 	listMySessions := http.HandlerFunc(app.listMySessionsHandler)
 	mux.Handle("GET /api/v1/sessions", app.authenticate(listMySessions))

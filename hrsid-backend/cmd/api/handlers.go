@@ -637,6 +637,85 @@ func (app *application) listDepartmentsHandler(w http.ResponseWriter, r *http.Re
 	app.writeJSON(w, http.StatusOK, map[string]interface{}{"departments": depts}, nil)
 }
 
+// --- SSO launch flow ---
+
+func (app *application) launchAppHandler(w http.ResponseWriter, r *http.Request) {
+	user := app.contextGetUser(r)
+	slug := r.PathValue("slug")
+
+	// Verify the user's department has access to this app
+	targetApp, err := app.models.Applications.GetBySlugAndDept(slug, user.DepartmentID)
+	if err != nil {
+		if errors.Is(err, data.ErrRecordNotFound) {
+			http.Error(w, "Not found or access denied", http.StatusForbidden)
+			return
+		}
+		app.logger.Println(err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	token, err := generateOTT()
+	if err != nil {
+		app.logger.Println(err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	expiresAt := time.Now().Add(60 * time.Second)
+	if err = app.models.SSOTokens.Insert(user.ID, targetApp.ID, token, expiresAt); err != nil {
+		app.logger.Println(err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	redirectURL := targetApp.BaseURL + "/sso/callback?token=" + token
+	app.writeJSON(w, http.StatusOK, map[string]string{"redirect_url": redirectURL}, nil)
+}
+
+func (app *application) ssoValidateHandler(w http.ResponseWriter, r *http.Request) {
+	secret := r.Header.Get("X-SSO-Secret")
+	if secret == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var input struct {
+		Token string `json:"token"`
+	}
+	if err := app.readJSON(w, r, &input); err != nil || input.Token == "" {
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return
+	}
+
+	ott, err := app.models.SSOTokens.ValidateAndConsume(input.Token)
+	if err != nil {
+		if errors.Is(err, data.ErrRecordNotFound) {
+			http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
+			return
+		}
+		app.logger.Println(err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	if ott.AppSSOSecret == "" || ott.AppSSOSecret != secret {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	app.writeJSON(w, http.StatusOK, map[string]interface{}{
+		"user": map[string]interface{}{
+			"nik":           ott.UserNIK,
+			"email":         ott.UserEmail,
+			"full_name":     ott.UserFullName,
+			"role":          ott.UserRole,
+			"department":    ott.UserDept,
+			"department_id": ott.UserDeptID,
+		},
+	}, nil)
+}
+
 // --- Audit log (admin) ---
 
 func (app *application) listAuditLogsHandler(w http.ResponseWriter, r *http.Request) {
