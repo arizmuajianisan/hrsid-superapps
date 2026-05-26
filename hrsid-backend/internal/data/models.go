@@ -8,6 +8,7 @@ type Models struct {
 	Applications ApplicationModel
 	Sessions     SessionModel
 	AuditLogs    AuditLogModel
+	Departments  DepartmentModel
 }
 
 func NewModels(db *sql.DB) Models {
@@ -16,5 +17,6 @@ func NewModels(db *sql.DB) Models {
 		Applications: ApplicationModel{DB: db},
 		Sessions:     SessionModel{DB: db},
 		AuditLogs:    AuditLogModel{DB: db},
+		Departments:  DepartmentModel{DB: db},
 	}
 }

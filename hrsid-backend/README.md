@@ -225,3 +225,111 @@ Response `200 OK`:
 ```
 
 ---
+
+#### List Applications (Admin)
+
+Returns all applications with their department access assignments.
+
+```
+GET /api/v1/admin/applications
+```
+
+Response `200 OK`:
+```json
+{
+    "applications": [
+        {
+            "id": 1,
+            "name": "Hi-DSign",
+            "slug": "hi-dsign",
+            "base_url": "https://hi-dsign.hrs-id.com",
+            "icon_url": null,
+            "description": "Electronic Drawing Approval System",
+            "department_ids": [1]
+        }
+    ]
+}
+```
+
+---
+
+#### Create Application
+
+```
+POST /api/v1/admin/applications
+```
+
+Body:
+```json
+{
+    "name": "Hi-DSign",
+    "slug": "hi-dsign",
+    "base_url": "https://hi-dsign.hrs-id.com",
+    "icon_url": null,
+    "description": "Electronic Drawing Approval System",
+    "department_ids": [1, 2]
+}
+```
+
+Response `201 Created`:
+```json
+{
+    "application": { ... }
+}
+```
+
+Returns `409 Conflict` if slug is already taken.
+
+---
+
+#### Update Application
+
+```
+PUT /api/v1/admin/applications/{id}
+```
+
+Body: same as Create. Fully replaces department assignments.
+
+Response `200 OK`:
+```json
+{
+    "application": { ... }
+}
+```
+
+---
+
+#### Delete Application
+
+Deletes the application and removes all its department access entries.
+
+```
+DELETE /api/v1/admin/applications/{id}
+```
+
+Response `200 OK`:
+```json
+{
+    "message": "Application deleted"
+}
+```
+
+---
+
+#### List Departments
+
+```
+GET /api/v1/admin/departments
+```
+
+Response `200 OK`:
+```json
+{
+    "departments": [
+        { "id": 1, "name": "Engineering" },
+        { "id": 2, "name": "Production" }
+    ]
+}
+```
+
+---

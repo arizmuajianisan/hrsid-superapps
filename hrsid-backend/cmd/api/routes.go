@@ -44,5 +44,20 @@ func (app *application) routes() http.Handler {
 	listAuditLogs := http.HandlerFunc(app.listAuditLogsHandler)
 	mux.Handle("GET /api/v1/admin/audit-logs", app.authenticate(app.requireAdmin(listAuditLogs)))
 
+	listAppsAdmin := http.HandlerFunc(app.listApplicationsAdminHandler)
+	mux.Handle("GET /api/v1/admin/applications", app.authenticate(app.requireAdmin(listAppsAdmin)))
+
+	createApp := http.HandlerFunc(app.createApplicationHandler)
+	mux.Handle("POST /api/v1/admin/applications", app.authenticate(app.requireAdmin(createApp)))
+
+	updateApp := http.HandlerFunc(app.updateApplicationHandler)
+	mux.Handle("PUT /api/v1/admin/applications/{id}", app.authenticate(app.requireAdmin(updateApp)))
+
+	deleteApp := http.HandlerFunc(app.deleteApplicationHandler)
+	mux.Handle("DELETE /api/v1/admin/applications/{id}", app.authenticate(app.requireAdmin(deleteApp)))
+
+	listDepts := http.HandlerFunc(app.listDepartmentsHandler)
+	mux.Handle("GET /api/v1/admin/departments", app.authenticate(app.requireAdmin(listDepts)))
+
 	return app.recoverPanic(app.enableCORS(app.logRequest(mux)))
 }

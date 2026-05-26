@@ -21,6 +21,11 @@ const userMenuItems = computed(() => {
         to: '/admin/users'
       },
       {
+        label: 'Manajemen Aplikasi',
+        icon: 'i-lucide-layout-grid',
+        to: '/admin/applications'
+      },
+      {
         label: 'Audit Log',
         icon: 'i-lucide-scroll-text',
         to: '/admin/audit'
@@ -63,7 +68,7 @@ const userMenuItems = computed(() => {
               <p class="text-sm font-medium leading-none">
                 {{ user?.fullName }}
               </p>
-              <p class="text-xs text-muted mt-0.5 capitalize">{{ user?.role }} {{ user?.dept }}</p>
+              <p class="text-xs text-muted mt-0.5 capitalize">{{ user?.role }}</p>
             </div>
             <UIcon name="i-lucide-user-circle" class="size-5 sm:hidden" />
           </UButton>

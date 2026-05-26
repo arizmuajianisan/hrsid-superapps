@@ -23,8 +23,12 @@ Menggunakan monorepo, `hrsid-backend` dan `hrsid-frontend`.
 ## 3. Struktur Routing
 Semua endpoint berada di bawah prefix `/api/v1`.
 *   **Public:** `POST /register`, `POST /login`, `POST /refresh`, `POST /logout`, `GET /healthcheck`
-*   **Protected (User):** `GET /me`, `GET /my-apps`
-*   **Protected (Admin):** `POST /admin/users/{id}/deactivate`
+*   **Protected (User):** `GET /me`, `GET /my-apps`, `GET /sessions`, `POST /sessions/{id}/revoke`
+*   **Protected (Admin):**
+    *   Users: `GET /admin/users`, `POST /admin/users/{id}/deactivate`, `POST /admin/users/{id}/reactivate`
+    *   Applications: `GET /admin/applications`, `POST /admin/applications`, `PUT /admin/applications/{id}`, `DELETE /admin/applications/{id}`
+    *   Departments: `GET /admin/departments`
+    *   Audit: `GET /admin/audit-logs`
 
 ## 4. Keamanan & Middleware
 *   **CORS:** Enabled (hardcoded `localhost:5173` untuk dev — perlu env var sebelum production).
@@ -45,7 +49,11 @@ Semua endpoint berada di bawah prefix `/api/v1`.
 - [x] Implementasi Middleware RBAC
 - [x] Implementasi Seeder Admin menggunakan `pgx/stdlib`
 - [x] Security review & bug fixes backend (deactivated user login, double query logout, refresh token rotation)
-- [ ] Buat frontend menggunakan Nuxt.js
-- [ ] Implementasi Frontend (Axios Interceptors untuk silent refresh)
-- [ ] Implementasi integrasi aplikasi ke dashboard `my-apps`
+- [x] Buat frontend menggunakan Nuxt.js (Nuxt 4 + Nuxt UI v4 + Pinia, SPA mode)
+- [x] Implementasi Frontend (silent refresh via `useApi` composable)
+- [x] Implementasi integrasi aplikasi ke dashboard `my-apps`
+- [x] Admin: Manajemen User (create, activate/deactivate)
+- [x] Admin: Manajemen Aplikasi CRUD (create, edit, delete, assign department access)
+- [x] Admin: Audit Log viewer
+- [x] User: Manajemen Sesi (lihat & revoke sesi aktif)
 - [ ] Hardening production: `Secure` cookie, CORS env var, input validation on `/register`

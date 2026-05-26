@@ -501,6 +501,142 @@ func (app *application) revokeMySessionHandler(w http.ResponseWriter, r *http.Re
 	app.writeJSON(w, http.StatusOK, map[string]string{"message": "Session revoked"}, nil)
 }
 
+// --- Application management (admin) ---
+
+func (app *application) listApplicationsAdminHandler(w http.ResponseWriter, r *http.Request) {
+	apps, err := app.models.Applications.GetAll()
+	if err != nil {
+		app.logger.Println(err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	app.writeJSON(w, http.StatusOK, map[string]interface{}{"applications": apps}, nil)
+}
+
+func (app *application) createApplicationHandler(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Name          string  `json:"name"`
+		Slug          string  `json:"slug"`
+		BaseURL       string  `json:"base_url"`
+		IconURL       *string `json:"icon_url"`
+		Description   string  `json:"description"`
+		DepartmentIDs []int   `json:"department_ids"`
+	}
+	if err := app.readJSON(w, r, &input); err != nil {
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return
+	}
+
+	newApp := &data.Application{
+		Name:        input.Name,
+		Slug:        input.Slug,
+		BaseURL:     input.BaseURL,
+		IconURL:     input.IconURL,
+		Description: input.Description,
+	}
+	if err := app.models.Applications.Create(newApp); err != nil {
+		if errors.Is(err, data.ErrDuplicateSlug) {
+			http.Error(w, "Slug already exists", http.StatusConflict)
+			return
+		}
+		app.logger.Println(err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	if err := app.models.Applications.SetDepartments(newApp.ID, input.DepartmentIDs); err != nil {
+		app.logger.Println(err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	newApp.DepartmentIDs = input.DepartmentIDs
+	app.writeJSON(w, http.StatusCreated, map[string]interface{}{"application": newApp}, nil)
+}
+
+func (app *application) updateApplicationHandler(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Bad Request: invalid id", http.StatusBadRequest)
+		return
+	}
+
+	var input struct {
+		Name          string  `json:"name"`
+		Slug          string  `json:"slug"`
+		BaseURL       string  `json:"base_url"`
+		IconURL       *string `json:"icon_url"`
+		Description   string  `json:"description"`
+		DepartmentIDs []int   `json:"department_ids"`
+	}
+	if err := app.readJSON(w, r, &input); err != nil {
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return
+	}
+
+	upApp := &data.Application{
+		ID:          id,
+		Name:        input.Name,
+		Slug:        input.Slug,
+		BaseURL:     input.BaseURL,
+		IconURL:     input.IconURL,
+		Description: input.Description,
+	}
+	if err := app.models.Applications.Update(upApp); err != nil {
+		switch {
+		case errors.Is(err, data.ErrRecordNotFound):
+			http.Error(w, "Application not found", http.StatusNotFound)
+		case errors.Is(err, data.ErrDuplicateSlug):
+			http.Error(w, "Slug already exists", http.StatusConflict)
+		default:
+			app.logger.Println(err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	if err := app.models.Applications.SetDepartments(id, input.DepartmentIDs); err != nil {
+		app.logger.Println(err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	upApp.DepartmentIDs = input.DepartmentIDs
+	app.writeJSON(w, http.StatusOK, map[string]interface{}{"application": upApp}, nil)
+}
+
+func (app *application) deleteApplicationHandler(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Bad Request: invalid id", http.StatusBadRequest)
+		return
+	}
+
+	if err := app.models.Applications.Delete(id); err != nil {
+		if errors.Is(err, data.ErrRecordNotFound) {
+			http.Error(w, "Application not found", http.StatusNotFound)
+			return
+		}
+		app.logger.Println(err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	app.writeJSON(w, http.StatusOK, map[string]string{"message": "Application deleted"}, nil)
+}
+
+func (app *application) listDepartmentsHandler(w http.ResponseWriter, r *http.Request) {
+	depts, err := app.models.Departments.GetAll()
+	if err != nil {
+		app.logger.Println(err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	app.writeJSON(w, http.StatusOK, map[string]interface{}{"departments": depts}, nil)
+}
+
 // --- Audit log (admin) ---
 
 func (app *application) listAuditLogsHandler(w http.ResponseWriter, r *http.Request) {
