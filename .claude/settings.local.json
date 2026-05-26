@@ -8,7 +8,8 @@
       "Bash(rtk lint *)",
       "Bash(rtk grep *)",
       "Bash(rtk find *)",
-      "Bash(rtk npx *)"
+      "Bash(rtk npx *)",
+      "Bash(xargs grep -l \"app_launch\\\\|launch_token\\\\|cross_app\")"
     ]
   }
 }
