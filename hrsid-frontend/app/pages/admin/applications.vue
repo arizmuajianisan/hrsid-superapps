@@ -13,6 +13,7 @@ interface Application {
   base_url: string
   icon_url: string | null
   description: string
+  sso_secret: string
   department_ids: number[]
 }
 
@@ -145,6 +146,24 @@ async function handleSubmit() {
   }
 }
 
+// --- SSO Secret ---
+const secretModal = reactive({ open: false, app: null as Application | null })
+
+function openSecret(app: Application) {
+  secretModal.app = app
+  secretModal.open = true
+}
+
+async function copySecret() {
+  if (!secretModal.app) return
+  try {
+    await navigator.clipboard.writeText(secretModal.app.sso_secret)
+    toast.add({ title: 'Tersalin', description: 'SSO secret disalin ke clipboard.', color: 'success' })
+  } catch {
+    toast.add({ title: 'Gagal', description: 'Tidak dapat menyalin. Salin manual.', color: 'error' })
+  }
+}
+
 // --- Delete ---
 const deleteModal = reactive({ open: false, app: null as Application | null })
 const deleteLoading = ref(false)
@@ -221,6 +240,14 @@ async function handleDelete() {
 
         <template #actions-cell="{ row }">
           <div class="flex gap-2">
+            <UButton
+              label="Secret"
+              color="primary"
+              variant="soft"
+              size="xs"
+              icon="i-lucide-key-round"
+              @click="openSecret(row.original)"
+            />
             <UButton
               label="Edit"
               color="neutral"
@@ -311,6 +338,47 @@ async function handleDelete() {
             />
           </div>
         </form>
+      </template>
+    </UModal>
+
+    <!-- SSO Secret Modal -->
+    <UModal v-model:open="secretModal.open" title="SSO Secret">
+      <template #body>
+        <div class="flex flex-col gap-4">
+          <p class="text-sm text-muted">
+            Secret untuk aplikasi
+            <span class="font-semibold text-default">{{ secretModal.app?.name }}</span
+            >. Salin nilai ini ke environment aplikasi tujuan sebagai
+            <code class="text-primary">HRSID_SSO_SECRET</code>. Dipakai untuk mengautentikasi
+            panggilan ke <code>/api/v1/sso/validate</code>.
+          </p>
+
+          <UFormField label="HRSID_SSO_SECRET">
+            <div class="flex gap-2">
+              <UInput
+                :model-value="secretModal.app?.sso_secret"
+                readonly
+                class="w-full font-mono"
+                @focus="(e: FocusEvent) => (e.target as HTMLInputElement).select()"
+              />
+              <UButton
+                color="primary"
+                variant="soft"
+                icon="i-lucide-copy"
+                label="Salin"
+                @click="copySecret"
+              />
+            </div>
+          </UFormField>
+
+          <UAlert
+            color="warning"
+            variant="soft"
+            icon="i-lucide-shield-alert"
+            title="Rahasia"
+            description="Jangan commit secret ini ke source code. Simpan hanya di environment variable aplikasi tujuan."
+          />
+        </div>
       </template>
     </UModal>
 

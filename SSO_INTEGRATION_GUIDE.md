@@ -57,6 +57,7 @@ User (Browser)          SSO Portal (Frontend)      HRSID Backend         Your Ap
 ```
 
 **Key properties:**
+
 - The OTT is a **64-character random hex string** — impossible to guess
 - It can only be used **once** (invalidated immediately after validation)
 - It expires in **60 seconds** from creation
@@ -69,6 +70,7 @@ User (Browser)          SSO Portal (Frontend)      HRSID Backend         Your Ap
 ### New endpoints (to be implemented in HRSID backend)
 
 #### `POST /api/v1/launch/{app_slug}`
+
 **Auth**: Required (Bearer token in Authorization header)
 
 Creates a one-time token for launching the specified app. Verifies that the user's department has access to the app.
@@ -76,6 +78,7 @@ Creates a one-time token for launching the specified app. Verifies that the user
 **Request**: No body required.
 
 **Response `200 OK`**:
+
 ```json
 {
   "redirect_url": "https://your-app.hirose.co.id/sso/callback?token=4a7f3c..."
@@ -83,6 +86,7 @@ Creates a one-time token for launching the specified app. Verifies that the user
 ```
 
 **Response `403 Forbidden`** (user's department has no access):
+
 ```json
 { "error": "access denied" }
 ```
@@ -90,22 +94,26 @@ Creates a one-time token for launching the specified app. Verifies that the user
 ---
 
 #### `POST /api/v1/sso/validate`
+
 **Auth**: None (server-to-server call authenticated by `X-SSO-Secret` header)
 
 Validates and consumes a one-time token. Returns the user's profile.
 
 **Request headers**:
+
 ```
 X-SSO-Secret: <shared_secret_configured_per_app>
 Content-Type: application/json
 ```
 
 **Request body**:
+
 ```json
 { "token": "4a7f3c..." }
 ```
 
 **Response `200 OK`**:
+
 ```json
 {
   "user": {
@@ -120,6 +128,7 @@ Content-Type: application/json
 ```
 
 **Response `401 Unauthorized`** (token expired, already used, or invalid):
+
 ```json
 { "error": "invalid or expired token" }
 ```
@@ -131,6 +140,7 @@ Content-Type: application/json
 ### Step 1 — Register your app in HRSID
 
 An HRSID admin registers your app via the admin panel or directly in the database. See [Section 6](#6-registering-your-app-in-hrsid) for details. You will receive:
+
 - Your app's **slug** (e.g., `hi-dsign`)
 - A **shared secret** for validating tokens (`X-SSO-Secret` header)
 
@@ -141,6 +151,7 @@ An HRSID admin registers your app via the admin panel or directly in the databas
 Your app needs one new route: `GET /sso/callback`
 
 This route receives the OTT from the URL query string and:
+
 1. Calls HRSID to validate the token
 2. Finds or creates the matching local user
 3. Creates a local session / issues your app's own JWT
@@ -158,6 +169,7 @@ HRSID email ──→  your_users.email (fallback)
 ```
 
 If no matching user exists, you have two options:
+
 - **Auto-provision**: Create the local user from HRSID data (recommended for internal tools)
 - **Block access**: Return `403` if the user is not pre-provisioned in your app
 
@@ -170,6 +182,7 @@ For **role mapping**, see the example in [Section 5](#5-implementation-examples)
 The callback route processes a token that has already been validated server-to-server — the browser only ever sends the opaque string. No sensitive data is exposed in the URL beyond the 60-second window.
 
 However, you should still:
+
 - Redirect with `303 See Other` after setting the session (avoid form resubmission)
 - Set your session cookie as `HttpOnly`, `Secure`, and `SameSite=Lax`
 - Never log or store the raw OTT value
@@ -180,14 +193,14 @@ However, you should still:
 
 These are all the fields HRSID returns after a successful token validation:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `nik` | string | Employee ID (e.g., `HE-001234`) — unique, use for matching |
-| `email` | string | Corporate email — unique, use as fallback match |
-| `full_name` | string | Display name |
-| `role` | string | HRSID role: `"user"` or `"admin"` |
-| `department` | string | Department name (e.g., `"Engineering"`) |
-| `department_id` | int | Department internal ID |
+| Field           | Type   | Description                                                |
+| --------------- | ------ | ---------------------------------------------------------- |
+| `nik`           | string | Employee ID (e.g., `HE-001234`) — unique, use for matching |
+| `email`         | string | Corporate email — unique, use as fallback match            |
+| `full_name`     | string | Display name                                               |
+| `role`          | string | HRSID role: `"user"` or `"admin"`                          |
+| `department`    | string | Department name (e.g., `"Engineering"`)                    |
+| `department_id` | int    | Department internal ID                                     |
 
 > **Important**: `role` here is the HRSID system role, not your app's role. Map it to your own role system as needed.
 
@@ -277,45 +290,45 @@ func validateSSOToken(token string) (*HRSIDUser, error) {
 ### Node.js / Express
 
 ```js
-const express = require('express');
-const axios = require('axios');
+const express = require("express");
+const axios = require("axios");
 
-app.get('/sso/callback', async (req, res) => {
-    const { token } = req.query;
-    if (!token) return res.status(400).send('Missing token');
+app.get("/sso/callback", async (req, res) => {
+  const { token } = req.query;
+  if (!token) return res.status(400).send("Missing token");
 
-    let user;
-    try {
-        const { data } = await axios.post(
-            'https://hrsid.hirose.co.id/api/v1/sso/validate',
-            { token },
-            { headers: { 'X-SSO-Secret': process.env.HRSID_SSO_SECRET } }
-        );
-        user = data.user;
-    } catch (err) {
-        return res.status(401).send('Invalid or expired SSO token');
-    }
+  let user;
+  try {
+    const { data } = await axios.post(
+      "https://hrsid.hirose.co.id/api/v1/sso/validate",
+      { token },
+      { headers: { "X-SSO-Secret": process.env.HRSID_SSO_SECRET } },
+    );
+    user = data.user;
+  } catch (err) {
+    return res.status(401).send("Invalid or expired SSO token");
+  }
 
-    // Find or create local user
-    let localUser = await db.users.findOne({ where: { nik: user.nik } });
-    if (!localUser) {
-        localUser = await db.users.create({
-            nik: user.nik,
-            email: user.email,
-            full_name: user.full_name,
-            // Map HRSID role to your app role:
-            role: mapRole(user.role, user.department),
-        });
-    }
+  // Find or create local user
+  let localUser = await db.users.findOne({ where: { nik: user.nik } });
+  if (!localUser) {
+    localUser = await db.users.create({
+      nik: user.nik,
+      email: user.email,
+      full_name: user.full_name,
+      // Map HRSID role to your app role:
+      role: mapRole(user.role, user.department),
+    });
+  }
 
-    req.session.userId = localUser.id;
-    res.redirect('/dashboard');
+  req.session.userId = localUser.id;
+  res.redirect("/dashboard");
 });
 
 function mapRole(hrsidRole, department) {
-    if (hrsidRole === 'admin') return 'admin';
-    if (department === 'Engineering') return 'engineer';
-    return 'viewer';
+  if (hrsidRole === "admin") return "admin";
+  if (department === "Engineering") return "engineer";
+  return "viewer";
 }
 ```
 
@@ -418,14 +431,14 @@ async def sso_callback(token: str):
 
 An HRSID admin registers your app in the Admin → Applications panel with the following fields:
 
-| Field | Example | Notes |
-|-------|---------|-------|
-| Name | `Hi-DSign` | Display name |
-| Slug | `hi-dsign` | URL-safe, unique identifier |
-| Base URL | `https://hi-dsign.hirose.co.id` | Used to construct the redirect URL |
-| Icon URL | `https://...` | Optional — shown in app launcher |
-| Description | `Document signing app` | Optional |
-| Department Access | `Engineering`, `QA` | Which departments can launch this app |
+| Field             | Example                         | Notes                                 |
+| ----------------- | ------------------------------- | ------------------------------------- |
+| Name              | `Hi-DSign`                      | Display name                          |
+| Slug              | `hi-dsign`                      | URL-safe, unique identifier           |
+| Base URL          | `https://hi-dsign.hirose.co.id` | Used to construct the redirect URL    |
+| Icon URL          | `https://...`                   | Optional — shown in app launcher      |
+| Description       | `Document signing app`          | Optional                              |
+| Department Access | `Engineering`, `QA`             | Which departments can launch this app |
 
 After registration, the admin generates and gives you a **shared secret** (`HRSID_SSO_SECRET`) to authenticate your backend's calls to `/api/v1/sso/validate`.
 
@@ -435,16 +448,16 @@ Store this secret in your app's environment variables — never commit it to sou
 
 ## 7. Security Notes
 
-| Concern | How it's handled |
-|---------|-----------------|
-| Token guessing | Token is 64 hex chars (256 bits) of `crypto/rand` |
-| Token replay | Token is invalidated immediately after first use |
-| Token expiry | Token expires after 60 seconds |
-| Man-in-the-middle | Use HTTPS for both HRSID and your app |
-| Unauthorized validation calls | `X-SSO-Secret` shared secret per app |
-| Department access bypass | HRSID checks department access before issuing OTT |
-| Session fixation | Generate a new session ID after SSO login in your app |
-| Open redirect | OTT redirect URL is fully constructed by HRSID — the browser never supplies the destination |
+| Concern                       | How it's handled                                                                            |
+| ----------------------------- | ------------------------------------------------------------------------------------------- |
+| Token guessing                | Token is 64 hex chars (256 bits) of `crypto/rand`                                           |
+| Token replay                  | Token is invalidated immediately after first use                                            |
+| Token expiry                  | Token expires after 60 seconds                                                              |
+| Man-in-the-middle             | Use HTTPS for both HRSID and your app                                                       |
+| Unauthorized validation calls | `X-SSO-Secret` shared secret per app                                                        |
+| Department access bypass      | HRSID checks department access before issuing OTT                                           |
+| Session fixation              | Generate a new session ID after SSO login in your app                                       |
+| Open redirect                 | OTT redirect URL is fully constructed by HRSID — the browser never supplies the destination |
 
 ---
 
@@ -452,21 +465,21 @@ Store this secret in your app's environment variables — never commit it to sou
 
 ### From `POST /api/v1/launch/{app_slug}`
 
-| HTTP | Error | Cause |
-|------|-------|-------|
-| 401 | `unauthorized` | Missing or invalid access token |
-| 403 | `access denied` | User's department has no access to this app |
-| 404 | `application not found` | Unknown slug |
-| 500 | `internal server error` | DB error |
+| HTTP | Error                   | Cause                                       |
+| ---- | ----------------------- | ------------------------------------------- |
+| 401  | `unauthorized`          | Missing or invalid access token             |
+| 403  | `access denied`         | User's department has no access to this app |
+| 404  | `application not found` | Unknown slug                                |
+| 500  | `internal server error` | DB error                                    |
 
 ### From `POST /api/v1/sso/validate`
 
-| HTTP | Error | Cause |
-|------|-------|-------|
-| 400 | `missing token` | Empty token in body |
-| 401 | `invalid or expired token` | Token not found, already used, or expired |
-| 401 | `unauthorized` | Missing or wrong `X-SSO-Secret` header |
-| 500 | `internal server error` | DB error |
+| HTTP | Error                      | Cause                                     |
+| ---- | -------------------------- | ----------------------------------------- |
+| 400  | `missing token`            | Empty token in body                       |
+| 401  | `invalid or expired token` | Token not found, already used, or expired |
+| 401  | `unauthorized`             | Missing or wrong `X-SSO-Secret` header    |
+| 500  | `internal server error`    | DB error                                  |
 
 ---
 
